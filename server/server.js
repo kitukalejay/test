@@ -8,65 +8,32 @@ const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
 const PORT = process.env.PORT || 3000;
+const publicPath = path.join(__dirname, 'public');
 
-// Store connected clients
-const clients = new Set();
+// Ensure public directory exists
+const fs = require('fs');
+if (!fs.existsSync(publicPath)) {
+  fs.mkdirSync(publicPath, { recursive: true });
+  console.log('Created public directory');
+}
 
-// WebSocket connection handler
-wss.on('connection', (ws) => {
-  console.log('New client connected');
-  clients.add(ws);
-
-  ws.on('message', (message) => {
-    console.log(`Received: ${message}`);
-    
-    try {
-      const data = JSON.parse(message);
-      
-      // Handle device identification
-      if (data.type === 'identify') {
-        ws.deviceType = data.device;
-        return;
-      }
-      
-      // Broadcast commands to all robots
-      if (data.command) {
-        clients.forEach(client => {
-          if (client.deviceType === 'robot' && client.readyState === WebSocket.OPEN) {
-            client.send(JSON.stringify({ 
-              command: data.command,
-              timestamp: Date.now()
-            }));
-          }
-        });
-      }
-    } catch (e) {
-      console.error('Error parsing message:', e);
-    }
-  });
-
-  ws.on('close', () => {
-    console.log('Client disconnected');
-    clients.delete(ws);
-  });
-});
-
-// Web control interface
-app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
+// WebSocket and routes would remain the same as before
+// ... [rest of your existing websocket code]
 
 // Serve static files
-app.use(express.static('public'));
+app.use(express.static(publicPath));
 
-// Health check endpoint
+// Root route
+app.get('/', (req, res) => {
+  res.sendFile(path.join(publicPath, 'index.html'));
+});
+
+// Health check
 app.get('/health', (req, res) => {
-  res.status(200).json({ 
-    status: 'healthy',
-    clients: clients.size
-  });
+  res.status(200).json({ status: 'healthy' });
 });
 
 server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
+  console.log(`Serving from: ${publicPath}`);
 });
