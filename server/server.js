@@ -1,15 +1,18 @@
-// server.js
 const express = require('express');
-const WebSocket = require('ws');
 const http = require('http');
+const WebSocket = require('ws');
+const path = require('path');
 
 const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
+const PORT = process.env.PORT || 3000;
+
 // Store connected clients
 const clients = new Set();
 
+// WebSocket connection handler
 wss.on('connection', (ws) => {
   console.log('New client connected');
   clients.add(ws);
@@ -20,17 +23,20 @@ wss.on('connection', (ws) => {
     try {
       const data = JSON.parse(message);
       
-      // Handle identification
+      // Handle device identification
       if (data.type === 'identify') {
         ws.deviceType = data.device;
         return;
       }
       
-      // Broadcast commands to all robots (or specific ones)
+      // Broadcast commands to all robots
       if (data.command) {
         clients.forEach(client => {
-          if (client.deviceType === 'robot' && client !== ws) {
-            client.send(JSON.stringify({ command: data.command }));
+          if (client.deviceType === 'robot' && client.readyState === WebSocket.OPEN) {
+            client.send(JSON.stringify({ 
+              command: data.command,
+              timestamp: Date.now()
+            }));
           }
         });
       }
@@ -47,44 +53,20 @@ wss.on('connection', (ws) => {
 
 // Web control interface
 app.get('/', (req, res) => {
-  res.send(`
-  <!DOCTYPE html>
-  <html>
-  <head>
-    <title>Robot WebSocket Control</title>
-    <style>
-      body { font-family: Arial, sans-serif; text-align: center; margin-top: 50px; }
-      button { padding: 15px 25px; font-size: 18px; margin: 10px; cursor: pointer; }
-    </style>
-  </head>
-  <body>
-    <h1>Robot Control Panel</h1>
-    <button onclick="sendCommand('forward')">Forward</button><br>
-    <button onclick="sendCommand('left')">Left</button>
-    <button onclick="sendCommand('stop')">Stop</button>
-    <button onclick="sendCommand('right')">Right</button><br>
-    <button onclick="sendCommand('backward')">Backward</button>
-    
-    <script>
-      const ws = new WebSocket('wss://${process.env.RENDER_EXTERNAL_HOSTNAME || 'localhost'}:${process.env.PORT || 3000}');
-      
-      function sendCommand(command) {
-        if (ws.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({ command }));
-        } else {
-          alert('WebSocket not connected');
-        }
-      }
-      
-      ws.onopen = () => console.log('Connected to server');
-      ws.onerror = (error) => console.error('WebSocket error:', error);
-    </script>
-  </body>
-  </html>
-  `);
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-const PORT = process.env.PORT || 3000;
+// Serve static files
+app.use(express.static('public'));
+
+// Health check endpoint
+app.get('/health', (req, res) => {
+  res.status(200).json({ 
+    status: 'healthy',
+    clients: clients.size
+  });
+});
+
 server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
